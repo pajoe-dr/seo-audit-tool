@@ -1,48 +1,10 @@
 const Apify = require('apify');
-const axios = require('axios');
 
 const { log, enqueueLinks } = Apify.utils;
 const { PseudoUrl } = Apify;
 
 const { basicSEO } = require('./seo.js');
 const { jsonLdLookup, microdataLookup } = require('./ontology_lookups.js');
-
-async function fetchPageSpeed(url, apiKey) {
-    if (!apiKey) return { mobile: null, desktop: null };
-
-    const strategies = ['mobile', 'desktop'];
-    const results = {};
-
-    for (const strategy of strategies) {
-        try {
-            const res = await axios.get('https://www.googleapis.com/pagespeedonline/v5/runPagespeed', {
-                params: {
-                    url,
-                    strategy,
-                    key: apiKey,
-                },
-            });
-
-            const lighthouseResult = res.data && res.data.lighthouseResult;
-            const categories = lighthouseResult && lighthouseResult.categories;
-            const performance = categories && categories.performance;
-            const audits = lighthouseResult && lighthouseResult.audits;
-
-            results[strategy] = {
-                performanceScore: performance && performance.score || null,
-                metrics: audits || {},
-            };
-        } catch (err) {
-            log.warning(`Failed to fetch PageSpeed Insights (${strategy}): ${err.message}`);
-            results[strategy] = null;
-        }
-    }
-
-    return {
-        mobile: results.mobile,
-        desktop: results.desktop,
-    };
-}
 
 Apify.main(async () => {
     const {
@@ -56,8 +18,7 @@ Apify.main(async () => {
         viewPortHeight,
         pageTimeout,
         maxRequestRetries,
-        handlePageTimeoutSecs = 3600,
-        pageSpeedApiKey,
+        handlePageTimeoutSecs = 3600
     } = await Apify.getValue('INPUT');
 
     log.info(`SEO audit for ${startUrl} started`);
@@ -106,7 +67,6 @@ Apify.main(async () => {
                 ...await basicSEO(page, seoParams),
                 jsonLd: await jsonLdLookup(page),
                 microdata: await microdataLookup(page),
-                ...(await fetchPageSpeed(request.url, pageSpeedApiKey)),
             };
 
             await Apify.pushData(data);
