@@ -1,25 +1,17 @@
 {
   "name": "seo-audit-tool",
-  "version": "2.0.0",
-  "description": "SEO audit tool",
+  "version": "1.0.0",
+  "description": "SEO audit tool with structured data extraction and PageSpeed integration",
   "main": "main.js",
   "scripts": {
-    "start": "node ./src/main.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node main.js"
   },
-  "author": "Jakub Drobnik <drobnik.j@gmail.com>",
-  "license": "ISC",
   "dependencies": {
-    "apify": "^0.21.3",
-    "bluebird": "^3.7.2",
-    "express": "^4.17.1",
-    "handlebars": "^4.7.6",
-    "microdata-node": "^2.0.0"
+    "apify": "^3.0.0",
+    "axios": "^1.6.7",
+    "microdata-node": "^1.2.6",
+    "bluebird": "^3.7.2"
   },
-  "devDependencies": {
-    "@apify/eslint-config": "0.1.0",
-    "eslint": "^7.0.0",
-    "@types/jquery": "^3.5.1",
-    "@types/bluebird": "^3.5.32"
-  }
+  "author": "Your Name",
+  "license": "MIT"
 }
