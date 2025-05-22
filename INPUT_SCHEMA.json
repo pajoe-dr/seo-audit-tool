@@ -95,6 +95,13 @@
             },
             "type": "object",
             "editor": "json"
+        },
+        "pageSpeedApiKey": {
+            "title": "PageSpeed API Key",
+            "description": "Google PageSpeed Insights API key for mobile/desktop audit",
+            "type": "string",
+            "editor": "textfield",
+            "prefill": ""
         }
     },
     "required": [
