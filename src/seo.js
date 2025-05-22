@@ -23,168 +23,147 @@ async function basicSEO(page, userParams = {}) {
         ...DEFAULT_SEO_PARAMS,
         ...userParams,
     };
-    const { origin } = new URL(page.url());
+    const { origin, hostname } = new URL(page.url());
 
     const fetchInBrowser = (url) => page.evaluate(async (pUrl) => {
         try {
             const { status } = await window.fetch(pUrl, {
                 method: 'GET',
                 mode: 'no-cors',
-                headers: {
-                    Accept: '*/*',
-                },
+                headers: { Accept: '*/*' },
                 referrerPolicy: 'no-referrer',
             });
-
             return status;
-        } catch (e) {
+        } catch {
             return 500;
         }
     }, url);
 
-    const seo = await page.evaluate(async (params) => {
+    const seo = await page.evaluate((params, hostname) => {
         const $ = window.jQuery;
         const result = {};
-        // Check flash content
-        if ($('script:contains(embedSWF)').length) result.isUsingFlash = true;
-        // -- Google Analytics
-        // Check for GA Object (e.g crawler can not find function(i,s,o,g,r,a,m) in meteor page like Apifier)
-        result.isGoogleAnalyticsObject = (typeof ga !== 'undefined');
-        // Check for GA function (function(i,s,o,g,r,a,m)) exists in page
-        result.isGoogleAnalyticsFunc = !!($('script:contains(function(i,s,o,g,r,a,m){i[\'GoogleAnalyticsObject\'])').length);
-        // -- Meta charset
-        result.isCharacterEncode = !!($('meta[charset]'));
-        // -- Meta description
-        result.isMetaDescription = !!($('meta[name=description]').length);
+
+        result.isUsingFlash = $('script:contains(embedSWF)').length > 0;
+        result.isGoogleAnalyticsObject = typeof ga !== 'undefined';
+        result.isGoogleAnalyticsFunc = $('script:contains(function(i,s,o,g,r,a,m){i[\'GoogleAnalyticsObject\'])').length > 0;
+
+        result.isCharacterEncode = !!$('meta[charset]').length;
+        result.isMetaDescription = !!$('meta[name=description]').length;
+
         if (result.isMetaDescription) {
             result.metaDescription = $('meta[name=description]').attr('content');
-            result.isMetaDescriptionEnoughLong = (result.metaDescription.length < params.maxMetaDescriptionLength);
+            result.isMetaDescriptionEnoughLong = result.metaDescription.length < params.maxMetaDescriptionLength;
         }
-        // --  Doctype
-        result.isDoctype = !!(document.doctype);
-        // -- Title
-        if ($('title').length) {
-            result.isTitle = true;
-            result.title = $('title').text();
-            const titleLength = result.title.length;
-            result.isTitleEnoughLong = (titleLength <= params.maxTitleLength) && (titleLength >= params.minTitleLength);
-        } else result.isTitle = false;
-        // -- h1
+
+        result.isDoctype = !!document.doctype;
+
+        const title = $('title').text();
+        result.isTitle = !!title;
+        result.title = title;
+        result.isTitleEnoughLong = title.length >= params.minTitleLength && title.length <= params.maxTitleLength;
+
         const h1Count = $('h1').length;
-        result.isH1 = (h1Count > 0);
-        if (result.isH1) result.h1 = $('h1').text();
-        result.isH1OnlyOne = (h1Count === 1);
-        // -- h2
-        result.isH2 = !!($('h2').length);
-        // -- Links
-        const $allLinks = $('a');
+        result.isH1 = h1Count > 0;
+        result.h1 = $('h1').first().text();
+        result.isH1OnlyOne = h1Count === 1;
+        result.isH2 = $('h2').length > 0;
+
+        const $allLinks = $('a[href]');
         result.linksCount = $allLinks.length;
-        result.isTooEnoughLinks = (result.linksCount < params.maxLinksCount);
-        result.internalNoFollowLinks = [];
-        $allLinks.each(function () {
-            if ($(this).attr('rel') === 'nofollow'
-                && this.href.includes(window.location.hostname)) {
-                result.internalNoFollowLinks.push(this.href);
-            }
-        });
+        result.isTooEnoughLinks = result.linksCount < params.maxLinksCount;
+
+        result.internalNoFollowLinks = $allLinks
+            .filter((_, el) => $(el).attr('rel') === 'nofollow' && el.href.includes(hostname))
+            .map((_, el) => el.href)
+            .toArray();
         result.internalNoFollowLinksCount = result.internalNoFollowLinks.length;
-        // Check broken links
+
         result.linkUrls = $allLinks
-            .filter((index, el) => {
+            .filter((_, el) => {
                 const href = $(el).attr('href');
-                return href
-                    && !href.includes('javascript:')
-                    && !href.includes('mailto:');
-            }).map((index, el) => el.href)
+                return href && !href.includes('javascript:') && !href.includes('mailto:');
+            })
+            .map((_, el) => el.href)
             .toArray();
-        result.internalLinks = $allLinks.filter((index, el) => {
-            const $el = $(el);
-            const href = $el.attr('href');
-            return $el.is('a[href]:not([target="_blank"]),a[href]:not([rel*="nofollow"]),a[href]:not([rel*="noreferrer"])')
-                && href.includes(window.location.hostname)
-                && !href.includes('javascript:')
-                && !href.includes('mailto:');
-        })
-            .map((index, el) => el.href)
-            .toArray();
-        // -- images
+
+        result.internalLinks = result.linkUrls.filter(url => url.includes(hostname));
+        result.externalLinks = result.linkUrls.filter(url => !url.includes(hostname));
+
+        result.imageAlts = [];
         result.imageUrls = [];
         result.notOptimizedImages = [];
-        $('img').each(function () {
-            result.imageUrls.push(this.src);
-            if (!$(this).attr('alt')) result.notOptimizedImages.push(this.src);
+
+        $('img').each((_, el) => {
+            const src = el.src;
+            const alt = $(el).attr('alt') || '';
+            result.imageUrls.push(src);
+            result.imageAlts.push({ src, alt });
+            if (!alt.trim()) result.notOptimizedImages.push(src);
         });
+
         result.notOptimizedImagesCount = result.notOptimizedImages.length;
-        // -- words count
-        result.wordsCount = document.body.innerText.split(/\b(\p{Letter}+)\b/gu).filter((s) => s).length;
-        result.isContentEnoughLong = (result.wordsCount < params.maxWordsCount);
-        // -- viewport
-        result.isViewport = !!($('meta[name=viewport]'));
-        // -- amp version if page
-        result.isAmp = !!($('html[⚡]') || $('html[amp]'));
-        // -- iframe check
-        result.isNotIframe = !($('iframe').length);
-        result.pageIsBlocked = $('meta[name=robots][content]')
-            .filter((index, s) => ['noindex', 'nofollow'].some((x) => s.content.includes(x)))
+
+        $('nav, aside, footer').remove();
+        result.wordsCount = document.body.innerText.split(/\b(\p{Letter}+)\b/gu).filter(Boolean).length;
+        result.isContentEnoughLong = result.wordsCount < params.maxWordsCount;
+
+        result.isViewport = !!$('meta[name=viewport]').length;
+        result.isAmp = !!$('html[⚡], html[amp]').length;
+        result.isNotIframe = !$('iframe').length;
+
+        result.pageIsBlocked = $('meta[name=robots][content], meta[name=googlebot][content]')
+            .filter((_, el) => ['noindex', 'nofollow'].some(flag => el.content.includes(flag)))
             .length > 0;
 
+        result.robotsMeta = $('meta[name=robots]').attr('content') || null;
+        result.googlebotMeta = $('meta[name=googlebot]').attr('content') || null;
+
+        result.canonicalLink = $('link[rel="canonical"]').attr('href') || null;
+
         return result;
-    }, seoParams);
+    }, seoParams, hostname);
 
     const { workingStatusCodes } = seoParams;
 
     seo.robotsFileExists = workingStatusCodes.includes(await fetchInBrowser(`${origin}/robots.txt`));
     seo.faviconExists = workingStatusCodes.includes(await fetchInBrowser(`${origin}/favicon.ico`));
 
-    // Check broken links
+    // Broken link checks
     const internalBrokenLinks = new Set();
     const allBrokenLinks = new Set();
-    await Bluebird.map(seo.internalLinks, (url) => {
-        if (internalBrokenLinks.has(url)) {
-            return;
+
+    await Bluebird.map(seo.internalLinks, async (url) => {
+        if (!internalBrokenLinks.has(url)) {
+            const res = await fetchInBrowser(url);
+            if (!workingStatusCodes.includes(res)) internalBrokenLinks.add(url);
         }
-
-        return fetchInBrowser(url).then((res) => {
-            if (!workingStatusCodes.includes(res)) {
-                internalBrokenLinks.add(url);
-            }
-        });
     }, { concurrency: 2 });
+
     seo.brokenLinksCount = internalBrokenLinks.size;
-
-    if (!seoParams.outputLinks) {
-        delete seo.internalLinks;
-    }
-
     seo.brokenLinks = [...internalBrokenLinks];
 
-    await Bluebird.map(seo.linkUrls, (url) => {
-        if (internalBrokenLinks.has(url) || allBrokenLinks.has(url)) {
-            return;
+    await Bluebird.map(seo.externalLinks, async (url) => {
+        if (!allBrokenLinks.has(url)) {
+            const res = await fetchInBrowser(url);
+            if (!workingStatusCodes.includes(res)) allBrokenLinks.add(url);
         }
-
-        return fetchInBrowser(url).then((res) => {
-            if (!workingStatusCodes.includes(res)) {
-                allBrokenLinks.add(url);
-            }
-        });
     }, { concurrency: 2 });
+
     seo.externalBrokenLinksCount = allBrokenLinks.size;
     seo.externalBrokenLinks = [...allBrokenLinks];
 
-    if (!seoParams.linkUrls) {
+    if (!seoParams.outputLinks) {
+        delete seo.internalLinks;
+        delete seo.externalLinks;
         delete seo.linkUrls;
     }
 
-    // Check broken images
     seo.brokenImages = [];
-    await Bluebird.map(seo.imageUrls, (imageUrl) => {
-        return fetchInBrowser(imageUrl).then((res) => {
-            if (!workingStatusCodes.includes(res)) {
-                seo.brokenImages.push(imageUrl);
-            }
-        });
+    await Bluebird.map(seo.imageUrls, async (imageUrl) => {
+        const res = await fetchInBrowser(imageUrl);
+        if (!workingStatusCodes.includes(res)) seo.brokenImages.push(imageUrl);
     }, { concurrency: 2 });
+
     seo.brokenImagesCount = seo.brokenImages.length;
     delete seo.imageUrls;
 
