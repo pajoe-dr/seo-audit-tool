@@ -1,10 +1,43 @@
 const Apify = require('apify');
+const axios = require('axios');
 
 const { log, enqueueLinks } = Apify.utils;
 const { PseudoUrl } = Apify;
 
 const { basicSEO } = require('./seo.js');
 const { jsonLdLookup, microdataLookup } = require('./ontology_lookups.js');
+
+async function fetchPageSpeed(url, apiKey) {
+    if (!apiKey) return { mobile: null, desktop: null };
+
+    const strategies = ['mobile', 'desktop'];
+    const results = {};
+
+    for (const strategy of strategies) {
+        try {
+            const res = await axios.get('https://www.googleapis.com/pagespeedonline/v5/runPagespeed', {
+                params: {
+                    url,
+                    strategy,
+                    key: apiKey,
+                },
+            });
+
+            results[strategy] = {
+                performanceScore: res.data.lighthouseResult?.categories?.performance?.score || null,
+                metrics: res.data.lighthouseResult?.audits || {},
+            };
+        } catch (err) {
+            log.warning(`Failed to fetch PageSpeed Insights (${strategy}): ${err.message}`);
+            results[strategy] = null;
+        }
+    }
+
+    return {
+        mobile: results.mobile,
+        desktop: results.desktop,
+    };
+}
 
 Apify.main(async () => {
     const {
@@ -19,15 +52,13 @@ Apify.main(async () => {
         pageTimeout,
         maxRequestRetries,
         handlePageTimeoutSecs = 3600,
+        pageSpeedApiKey,
     } = await Apify.getValue('INPUT');
 
     log.info(`SEO audit for ${startUrl} started`);
 
-    // Get web hostname
     const { hostname } = new URL(startUrl);
     const pseudoUrl = new PseudoUrl(`[http|https]://[.*]${hostname}[.*]`);
-
-    log.info(`Web host name: ${hostname}`);
 
     const proxyConfiguration = await Apify.createProxyConfiguration({
         ...proxy,
@@ -43,15 +74,9 @@ Apify.main(async () => {
         gotoFunction: async ({ request, page }) => {
             await page.setBypassCSP(true);
 
-            if (userAgent) {
-                await page.setUserAgent(userAgent);
-            }
-
+            if (userAgent) await page.setUserAgent(userAgent);
             if (viewPortWidth && viewPortHeight) {
-                await page.setViewport({
-                    height: viewPortHeight,
-                    width: viewPortWidth,
-                });
+                await page.setViewport({ width: viewPortWidth, height: viewPortHeight });
             }
 
             return page.goto(request.url, {
@@ -62,7 +87,6 @@ Apify.main(async () => {
         launchPuppeteerOptions: {
             ignoreHTTPSErrors: true,
             args: [
-                // needed for CSP to be actually bypassed, and fetch work inside the browser
                 '--allow-running-insecure-content',
                 '--disable-web-security',
                 '--enable-features=NetworkService',
@@ -82,42 +106,34 @@ Apify.main(async () => {
                 ...await basicSEO(page, seoParams),
                 jsonLd: await jsonLdLookup(page),
                 microdata: await microdataLookup(page),
+                ...(await fetchPageSpeed(request.url, pageSpeedApiKey)),
             };
 
             await Apify.pushData(data);
 
-            // Enqueue links, support SPAs
             const enqueueResults = await enqueueLinks({
                 page,
-                selector: 'a[href]:not([target="_blank"]),a[href]:not([rel*="nofollow"]),a[href]:not([rel*="noreferrer"])', // exclude externals
+                selector: 'a[href]:not([target="_blank"]),a[href]:not([rel*="nofollow"]),a[href]:not([rel*="noreferrer"])',
                 pseudoUrls: [pseudoUrl],
                 requestQueue,
                 transformRequestFunction: (r) => {
                     const url = new URL(r.url);
                     url.pathname = url.pathname
                         .split('/')
-                        .filter(s => s)
+                        .filter(Boolean)
                         .slice(0, maxDepth)
                         .join('/');
-
-                    return {
-                        url: url.toString(),
-                    };
+                    return { url: url.toString() };
                 },
             });
 
-            const newRequests = enqueueResults.filter((result) => (!result.wasAlreadyPresent));
-
-            if (newRequests.length) {
-                log.info(`${request.url}: Added ${newRequests.length} urls to queue.`);
-            }
-
+            const newRequests = enqueueResults.filter(r => !r.wasAlreadyPresent);
+            if (newRequests.length) log.info(`${request.url}: Added ${newRequests.length} urls to queue.`);
             log.info(`${request.url}: Finished`);
         },
 
         handleFailedRequestFunction: async ({ request, error }) => {
             log.info(`Request ${request.url} failed too many times`);
-
             await Apify.pushData({
                 url: request.url,
                 isLoaded: false,
@@ -127,6 +143,5 @@ Apify.main(async () => {
     });
 
     await crawler.run();
-
     log.info(`SEO audit for ${startUrl} finished.`);
 });
