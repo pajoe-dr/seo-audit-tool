@@ -23,9 +23,14 @@ async function fetchPageSpeed(url, apiKey) {
                 },
             });
 
+            const lighthouseResult = res.data && res.data.lighthouseResult;
+            const categories = lighthouseResult && lighthouseResult.categories;
+            const performance = categories && categories.performance;
+            const audits = lighthouseResult && lighthouseResult.audits;
+
             results[strategy] = {
-                performanceScore: res.data.lighthouseResult?.categories?.performance?.score || null,
-                metrics: res.data.lighthouseResult?.audits || {},
+                performanceScore: performance && performance.score || null,
+                metrics: audits || {},
             };
         } catch (err) {
             log.warning(`Failed to fetch PageSpeed Insights (${strategy}): ${err.message}`);
@@ -60,10 +65,7 @@ Apify.main(async () => {
     const { hostname } = new URL(startUrl);
     const pseudoUrl = new PseudoUrl(`[http|https]://[.*]${hostname}[.*]`);
 
-    const proxyConfiguration = await Apify.createProxyConfiguration({
-        ...proxy,
-    }) || undefined;
-
+    const proxyConfiguration = await Apify.createProxyConfiguration({ ...proxy }) || undefined;
     const requestQueue = await Apify.openRequestQueue();
     await requestQueue.addRequest({ url: startUrl });
 
@@ -73,12 +75,10 @@ Apify.main(async () => {
         useSessionPool: true,
         gotoFunction: async ({ request, page }) => {
             await page.setBypassCSP(true);
-
             if (userAgent) await page.setUserAgent(userAgent);
             if (viewPortWidth && viewPortHeight) {
                 await page.setViewport({ width: viewPortWidth, height: viewPortHeight });
             }
-
             return page.goto(request.url, {
                 waitUntil: 'networkidle2',
                 timeout: pageTimeout,
