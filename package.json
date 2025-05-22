@@ -7,8 +7,8 @@
     "start": "node main.js"
   },
   "dependencies": {
-    "apify": "^3.0.0",
-    "microdata-node": "^1.2.6",
+    "apify": "^2.3.1",
+    "microdata-node": "^1.2.5",
     "bluebird": "^3.7.2"
   },
   "author": "Your Name",
