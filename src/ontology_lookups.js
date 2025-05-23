@@ -5,9 +5,9 @@ const jsonLdLookup = async (page) => {
     let isJsonLd = false;
     let jsonLdData = [];
 
-    const handles = await page.$$eval('script[type="application/ld+json"]', scripts => {
-        return scripts.map(s => s.textContent.trim());
-    });
+    const handles = await page.$$eval('script[type="application/ld+json"]', scripts =>
+        scripts.map(s => s.textContent.trim())
+    );
 
     if (handles.length > 0) {
         isJsonLd = true;
