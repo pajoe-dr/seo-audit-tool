@@ -1,16 +1,7 @@
 {
-  "name": "seo-audit-tool",
-  "version": "1.0.0",
-  "description": "SEO audit tool with structured data extraction, link and tag analysis",
-  "main": "main.js",
-  "scripts": {
-    "start": "node main.js"
-  },
   "dependencies": {
-    "apify": "^2.3.1",
-    "microdata-node": "^1.2.5",
-    "bluebird": "^3.7.2"
-  },
-  "author": "Your Name",
-  "license": "MIT"
+    "apify": "^2.3.2",
+    "bluebird": "^3.7.2",
+    "microdata-node": "^1.2.4"
+  }
 }
