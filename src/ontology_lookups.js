@@ -1,4 +1,4 @@
-const microdataParser = require('microdata-node');
+const microdataParser = require('@deskeen/microdata-node');
 const Apify = require('apify');
 
 const jsonLdLookup = async (page) => {
