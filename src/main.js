@@ -60,20 +60,25 @@ Apify.main(async () => {
         handlePageFunction: async ({ request, page }) => {
             log.info('Start processing', { url: request.url });
 
+            // Enhanced: capture all fields from basicSEO, jsonLdLookup, microdataLookup
+            const seoData = await basicSEO(page, seoParams);
+            const jsonLdData = await jsonLdLookup(page);
+            const microdataData = await microdataLookup(page);
+
             const data = {
                 url: page.url(),
                 title: await page.title(),
                 isLoaded: true,
-                ...await basicSEO(page, seoParams),
-                jsonLd: await jsonLdLookup(page),
-                microdata: await microdataLookup(page),
+                ...seoData,
+                jsonLd: jsonLdData,
+                microdata: microdataData
             };
 
             await Apify.pushData(data);
 
             const enqueueResults = await enqueueLinks({
                 page,
-                selector: 'a[href]:not([target="_blank"]),a[href]:not([rel*="nofollow"]),a[href]:not([rel*="noreferrer"])',
+                selector: 'a[href]:not([target="_blank"]):not([rel*="nofollow"]):not([rel*="noreferrer"])',
                 pseudoUrls: [pseudoUrl],
                 requestQueue,
                 transformRequestFunction: (r) => {
