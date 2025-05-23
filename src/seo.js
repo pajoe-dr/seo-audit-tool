@@ -43,41 +43,52 @@ async function basicSEO(page, userParams = {}) {
         const $ = window.jQuery;
         const result = {};
 
+        // Flash detection
         result.isUsingFlash = $('script:contains(embedSWF)').length > 0;
+
+        // Google Analytics
         result.isGoogleAnalyticsObject = typeof ga !== 'undefined';
         result.isGoogleAnalyticsFunc = $('script:contains(function(i,s,o,g,r,a,m){i[\'GoogleAnalyticsObject\'])').length > 0;
 
+        // Character encoding
         result.isCharacterEncode = !!$('meta[charset]').length;
-        result.isMetaDescription = !!$('meta[name=description]').length;
 
+        // Meta description
+        result.isMetaDescription = !!$('meta[name=description]').length;
         if (result.isMetaDescription) {
             result.metaDescription = $('meta[name=description]').attr('content');
             result.isMetaDescriptionEnoughLong = result.metaDescription.length < params.maxMetaDescriptionLength;
         }
 
+        // Doctype
         result.isDoctype = !!document.doctype;
 
+        // Title
         const title = $('title').text();
         result.isTitle = !!title;
         result.title = title;
         result.isTitleEnoughLong = title.length >= params.minTitleLength && title.length <= params.maxTitleLength;
 
+        // H1/H2 tags
         const h1Count = $('h1').length;
         result.isH1 = h1Count > 0;
         result.h1 = $('h1').first().text();
         result.isH1OnlyOne = h1Count === 1;
         result.isH2 = $('h2').length > 0;
 
+        // ALL links, internal/external separation
         const $allLinks = $('a[href]');
         result.linksCount = $allLinks.length;
         result.isTooEnoughLinks = result.linksCount < params.maxLinksCount;
 
+        // Internal nofollow links
         result.internalNoFollowLinks = $allLinks
             .filter((_, el) => $(el).attr('rel') === 'nofollow' && el.href.includes(hostname))
             .map((_, el) => el.href)
             .toArray();
         result.internalNoFollowLinksCount = result.internalNoFollowLinks.length;
 
+        // All link URLs, separated
         result.linkUrls = $allLinks
             .filter((_, el) => {
                 const href = $(el).attr('href');
@@ -85,10 +96,10 @@ async function basicSEO(page, userParams = {}) {
             })
             .map((_, el) => el.href)
             .toArray();
-
         result.internalLinks = result.linkUrls.filter(url => url.includes(hostname));
         result.externalLinks = result.linkUrls.filter(url => !url.includes(hostname));
 
+        // Image alt attributes
         result.imageAlts = [];
         result.imageUrls = [];
         result.notOptimizedImages = [];
@@ -103,14 +114,17 @@ async function basicSEO(page, userParams = {}) {
 
         result.notOptimizedImagesCount = result.notOptimizedImages.length;
 
+        // Remove nav, aside, footer for word count
         $('nav, aside, footer').remove();
         result.wordsCount = document.body.innerText.split(/\b(\p{Letter}+)\b/gu).filter(Boolean).length;
         result.isContentEnoughLong = result.wordsCount < params.maxWordsCount;
 
+        // Viewport, AMP, iframe checks
         result.isViewport = !!$('meta[name=viewport]').length;
         result.isAmp = !!$('html[⚡], html[amp]').length;
         result.isNotIframe = !$('iframe').length;
 
+        // Robots and googlebot meta tags
         result.pageIsBlocked = $('meta[name=robots][content], meta[name=googlebot][content]')
             .filter((_, el) => ['noindex', 'nofollow'].some(flag => el.content.includes(flag)))
             .length > 0;
@@ -118,6 +132,7 @@ async function basicSEO(page, userParams = {}) {
         result.robotsMeta = $('meta[name=robots]').attr('content') || null;
         result.googlebotMeta = $('meta[name=googlebot]').attr('content') || null;
 
+        // Canonical tag
         result.canonicalLink = $('link[rel="canonical"]').attr('href') || null;
 
         return result;
@@ -158,6 +173,7 @@ async function basicSEO(page, userParams = {}) {
         delete seo.linkUrls;
     }
 
+    // Broken images
     seo.brokenImages = [];
     await Bluebird.map(seo.imageUrls, async (imageUrl) => {
         const res = await fetchInBrowser(imageUrl);
