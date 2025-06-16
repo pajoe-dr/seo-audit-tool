@@ -8,7 +8,7 @@
       "type": "string",
       "description": "URL of webpage, where we run SEO audit",
       "example": "https://apify.com",
-      "prefill": "https://apify.com",
+      "prefill": "https://midmichplumbing.com/",
       "editor": "textfield"
     },
     "proxy": {
